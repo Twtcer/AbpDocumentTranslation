@@ -1,34 +1,11 @@
 # Web应用程序开发教程 - 第一章: 创建服务端
-````json
-//[doc-params]
-{
-    "UI": ["MVC","NG"],
-    "DB": ["EF","Mongo"]
-}
-````
-{{
-if UI == "MVC"
-  UI_Text="mvc"
-else if UI == "NG"
-  UI_Text="angular"
-else
-  UI_Text="?"
-end
-if DB == "EF"
-  DB_Text="Entity Framework Core"
-else if DB == "Mongo"
-  DB_Text="MongoDB"
-else
-  DB_Text="?"
-end
-}}
-
+ 
 ## 关于本教程
 
 在本系列教程中, 你将构建一个名为 `Acme.BookStore` 的用于管理书籍及其作者列表的基于ABP的应用程序.  它是使用以下技术开发的:
 
-* **{{DB_Text}}** 做为ORM提供程序.
-* **{{UI_Value}}** 做为UI框架.
+* Entity Framework Core 做为ORM提供程序.
+* MVC / Razor Pages 做为UI框架.
 
 本教程分为以下部分:
 
