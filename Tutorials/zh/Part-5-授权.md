@@ -172,3 +172,206 @@ namespace Acme.BookStore.Books
 在构造函数中添加代码。Base 自动都CRUD操作使用这些权限。这将使应用程序更加安全，同时也是HTTP API安全。因为上面所述，该服务自动用于HTTP API(详情见 [auto API controllers](https://docs.abp.io/en/abp/latest/API/Auto-API-Controllers))
 
 在开发管理功能时候，稍后将该属性用于授权 [Authorize(...)]
+
+### Razor Page
+虽然保护HTTP API和应用程序服务可以防止未经授权的用户使用，但他们仍可以导航到图书管理页面。尽管当前页面手机对服务器进行AJAX调用时候，他们将获得授权例外，但是我们也应该对页面进行授权，以提供更好的用户体验和安全性。
+
+打开 BookStoreWebModule ，然后日俺家下面的代码块到ConfigureServices方法:
+``` C#
+Configure<RazorPagesOptions>(options =>
+{
+    options.Conventions.AuthorizePage("/Books/Index", BookStorePermissions.Books.Default);
+    options.Conventions.AuthorizePage("/Books/CreateModal", BookStorePermissions.Books.Create);
+    options.Conventions.AuthorizePage("/Books/EditModal", BookStorePermissions.Books.Edit);
+});
+
+```
+现在，未授权用户将重定向到登录页面(译者：如果有)。
+
+## 隐藏新建图书按钮
+图书管理页面有“新建图书”按钮，若当前用户没有“图书创建”权限，则改按钮不可见。
+
+![bookstore-new-book-button-small](https://raw.githubusercontent.com/abpframework/abp/rel-4.0/docs/en/Tutorials/images/bookstore-new-book-button-small.png)
+
+打开 文件 Pages/Books/Index.html ，按以下内容修改：
+```html
+  @page
+@using Acme.BookStore.Localization
+@using Acme.BookStore.Permissions
+@using Acme.BookStore.Web.Pages.Books
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Localization
+@model IndexModel
+@inject IStringLocalizer<BookStoreResource> L
+@inject IAuthorizationService AuthorizationService
+@section scripts
+{
+    <abp-script src="/Pages/Books/Index.js"/>
+}
+
+<abp-card>
+    <abp-card-header>
+        <abp-row>
+            <abp-column size-md="_6">
+                <abp-card-title>@L["Books"]</abp-card-title>
+            </abp-column>
+            <abp-column size-md="_6" class="text-right">
+                @if (await AuthorizationService.IsGrantedAsync(BookStorePermissions.Books.Create))
+                {
+                    <abp-button id="NewBookButton"
+                                text="@L["NewBook"].Value"
+                                icon="plus"
+                                button-type="Primary"/>
+                }
+            </abp-column>
+        </abp-row>
+    </abp-card-header>
+    <abp-card-body>
+        <abp-table striped-rows="true" id="BooksTable"></abp-table>
+    </abp-card-body>
+</abp-card>
+
+```
+
+添加 注入方法 @inject IAuthorizationService AuthorizationService
+使用 @if (await AuthorizationService.IsGrantedAsync(BookStorePermissions.Books.Create)) 检查权限，是否渲染新建按钮
+
+## JavaScript端
+
+在图书管理页面中每一行都有动作按钮。动作按钮包括编辑和删除动作：
+
+![bookstore-edit-delete-actions](https://raw.githubusercontent.com/abpframework/abp/rel-4.0/docs/en/Tutorials/images/bookstore-edit-delete-actions.png)
+
+如果当前用户没有操作权限我们将隐藏此按钮。表格行动作需要一个是否显示的选项，通过设置false来达到隐藏的目的。
+
+
+
+在项目*.BookStore.Web中 打开文件 Pages/Books/Index.js ，添加一个visibe选项来设置Edit是否显示。
+
+```javascript
+{
+    text: l('Edit'),
+    visible: abp.auth.isGranted('BookStore.Books.Edit'), //CHECK for the PERMISSION
+    action: function (data) {
+        editModal.open({ id: data.record.id });
+    }
+}
+```
+
+Delete 删除同上
+
+```javascript
+visible: abp.auth.isGranted('BookStore.Books.Delete')
+```
+
+- **abp.auth.isGranted(...)** 被用于定义前的权限检查
+- **visible** 能够基于一些条件计算后返回一个bool类型的值用于控制是否显示
+
+
+
+## 菜单项
+
+即使我们已经保护了图书管理页面的所有层，但是它仍然在应用程序的主菜单上可见。如果当前用户没有权限，我们也应该隐藏菜单项。
+
+打开类文件 BookStoreMenuContributor 找到下面的代码：
+
+```c#
+context.Menu.AddItem(
+    new ApplicationMenuItem(
+        "BooksStore",
+        l["Menu:BookStore"],
+        icon: "fa fa-book"
+    ).AddItem(
+        new ApplicationMenuItem(
+            "BooksStore.Books",
+            l["Menu:Books"],
+            url: "/Books"
+        )
+    )
+);
+
+```
+
+用下面的代码替代：
+
+```c#
+var bookStoreMenu = new ApplicationMenuItem(
+    "BooksStore",
+    l["Menu:BookStore"],
+    icon: "fa fa-book"
+);
+
+context.Menu.AddItem(bookStoreMenu);
+
+//CHECK the PERMISSION
+if (await context.IsGrantedAsync(BookStorePermissions.Books.Default))
+{
+    bookStoreMenu.AddItem(new ApplicationMenuItem(
+        "BooksStore.Books",
+        l["Menu:Books"],
+        url: "/Books"
+    ));
+}
+
+```
+
+你也需要对方法**ConfigureMenuAsync**添加关键字 **async** ,然后重新排列返回值。最终**BookStoreMenuContributor**类应该如下：
+
+```C#
+using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Localization;
+using Acme.BookStore.Localization;
+using Acme.BookStore.MultiTenancy;
+using Acme.BookStore.Permissions;
+using Volo.Abp.TenantManagement.Web.Navigation;
+using Volo.Abp.UI.Navigation;
+
+namespace Acme.BookStore.Web.Menus
+{
+    public class BookStoreMenuContributor : IMenuContributor
+    {
+        public async Task ConfigureMenuAsync(MenuConfigurationContext context)
+        {
+            if (context.Menu.Name == StandardMenus.Main)
+            {
+                await ConfigureMainMenuAsync(context);
+            }
+        }
+
+        private async Task ConfigureMainMenuAsync(MenuConfigurationContext context)
+        {
+            if (!MultiTenancyConsts.IsEnabled)
+            {
+                var administration = context.Menu.GetAdministration();
+                administration.TryRemoveMenuItem(TenantManagementMenuNames.GroupName);
+            }
+
+            var l = context.GetLocalizer<BookStoreResource>();
+
+            context.Menu.Items.Insert(0, new ApplicationMenuItem("BookStore.Home", l["Menu:Home"], "~/"));
+
+            var bookStoreMenu = new ApplicationMenuItem(
+                "BooksStore",
+                l["Menu:BookStore"],
+                icon: "fa fa-book"
+            );
+
+            context.Menu.AddItem(bookStoreMenu);
+
+            //CHECK the PERMISSION
+            if (await context.IsGrantedAsync(BookStorePermissions.Books.Default))
+            {
+                bookStoreMenu.AddItem(new ApplicationMenuItem(
+                    "BooksStore.Books",
+                    l["Menu:Books"],
+                    url: "/Books"
+                ));
+            }
+        }
+    }
+}
+```
+
+
+
