@@ -1,3 +1,7 @@
+---
+
+---
+
 # 原文档
 
 地址：
@@ -123,7 +127,7 @@ namespace Acme.BookStore.Permissions
 定义权限后，您可以在权限管理模式下看到他们
 定位到 Adninistrator -> Indentity -> Role 页面下，为角色“admin”选择编辑权限如下：
 
-![权限设置](https://img2020.cnblogs.com/blog/630623/202012/630623-20201221150356967-1799851470.png)
+![权限设置](https://raw.githubusercontent.com/Twtcer/imgbed/main/picgo/630623-20201221150356967-1799851470.png)
 
 授权所需的权限并保存
 提示:新权限自动授予如果你运行application.Acme.BookStore.DbMigrator admin角色
@@ -191,7 +195,7 @@ Configure<RazorPagesOptions>(options =>
 ## 隐藏新建图书按钮
 图书管理页面有“新建图书”按钮，若当前用户没有“图书创建”权限，则改按钮不可见。
 
-![bookstore-new-book-button-small](https://raw.githubusercontent.com/abpframework/abp/rel-4.0/docs/en/Tutorials/images/bookstore-new-book-button-small.png)
+![bookstore-new-book-button-small](https://raw.githubusercontent.com/Twtcer/imgbed/main/picgo/bookstore-new-book-button-small.png)
 
 打开 文件 Pages/Books/Index.html ，按以下内容修改：
 ```html
@@ -240,7 +244,7 @@ Configure<RazorPagesOptions>(options =>
 
 在图书管理页面中每一行都有动作按钮。动作按钮包括编辑和删除动作：
 
-![bookstore-edit-delete-actions](https://raw.githubusercontent.com/abpframework/abp/rel-4.0/docs/en/Tutorials/images/bookstore-edit-delete-actions.png)
+![bookstore-edit-delete-actions](https://raw.githubusercontent.com/Twtcer/imgbed/main/picgo/bookstore-edit-delete-actions.png)
 
 如果当前用户没有操作权限我们将隐藏此按钮。表格行动作需要一个是否显示的选项，通过设置false来达到隐藏的目的。
 
