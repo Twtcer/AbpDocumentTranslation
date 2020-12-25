@@ -42,7 +42,30 @@
 
 ##  IAuthorAppService
 
-我们将首先创建应用服务接口和相关的DTOs。在项目***.BookStore.Application.Contracts**创建一个名为**IAuthorAppService**新接口
+我们将首先创建应用服务接口和相关的DTOs。在项目***.BookStore.Application.Contracts**创建一个名为**IAuthorAppService**新接口，代码如下：
+
+```c#
+using System;
+using System.Threading.Tasks;
+using Volo.Abp.Application.Dtos;
+using Volo.Abp.Application.Services;
+
+namespace Acme.BookStore.Authors
+{
+    public interface IAuthorAppService : IApplicationService
+    {
+        Task<AuthorDto> GetAsync(Guid id);
+
+        Task<PagedResultDto<AuthorDto>> GetListAsync(GetAuthorListDto input);
+
+        Task<AuthorDto> CreateAsync(CreateAuthorDto input);
+
+        Task UpdateAsync(Guid id, UpdateAuthorDto input);
+
+        Task DeleteAsync(Guid id);
+    }
+}
+```
 
 
 
