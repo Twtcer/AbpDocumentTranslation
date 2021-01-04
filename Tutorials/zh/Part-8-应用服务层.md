@@ -1,4 +1,4 @@
-#  Web开发教程7 作者：数据库集成
+#  Web开发教程8 作者：应用层
 
 ## 关于此教程
 
@@ -67,7 +67,108 @@ namespace Acme.BookStore.Authors
 }
 ```
 
+- **IApplicationService** 是由所有应用程序服务集成的常规接口，因此ABP框架可以识别该服务。
+- 定义的标准方法以在**Author**实体上执行CRUD操作。
+- **PageResultDto**  是ABP框架中预定义DTO类。它具有**Items** 集合和**TotalCount**属性即返回分页结果。
+- 首先从**CreateAsync**方法返回AuthorDto（对于新建的作者），此应用程序不使用它-只是为了显示不同的方法。
+
+该界面使用下面定义的DTO（为您的项目创建他们）
 
 
 
+## AuthorDto
+
+```c#
+using System;
+using Volo.Abp.Application.Dtos;
+
+namespace Acme.BookStore.Authors
+{
+    public class AuthorDto : EntityDto<Guid>
+    {
+        public string Name { get; set; }
+
+        public DateTime BirthDate { get; set; }
+
+        public string ShortBio { get; set; }
+    }
+}
+```
+
+- **EntityDto<T>** 仅具有给定泛型参数的Id属性。您可以自己创建一个Id属性，而不是继承EntityDto。
+
+
+
+## GetAuthorListDto
+
+```c#
+using Volo.Abp.Application.Dtos;
+
+namespace Acme.BookStore.Authors
+{
+    public class GetAuthorListDto : PagedAndSortedResultRequestDto
+    {
+        public string Filter { get; set; }
+    }
+}
+```
+
+- **Filter**被用于搜索作者。它可为**null**对象（或者string空）以获得所有作者。
+- **PagedAndSortedResultRequestDto** 具有标准的分页和排序属性：**int MaxResultCount, int SkipCount, String Sorting** 。
+
+
+
+> ABP框架具有基本的DTO类，以简化和标准化您的DTO。有关信息，参考DTO文档。
+
+
+
+## CreateAuthorDto
+
+```c#
+using System;
+using System.ComponentModel.DataAnnotations;
+
+namespace Acme.BookStore.Authors
+{
+    public class CreateAuthorDto
+    {
+        [Required]
+        [StringLength(AuthorConsts.MaxNameLength)]
+        public string Name { get; set; }
+
+        [Required]
+        public DateTime BirthDate { get; set; }
+        
+        public string ShortBio { get; set; }
+    }
+}
+```
+
+数据注解属性能够用于校验DTO对象。详见[校验文档](https://docs.abp.io/en/abp/latest/Validation)。
+
+
+
+## UpdateAuthorDto
+
+```c#
+using System;
+using System.ComponentModel.DataAnnotations;
+
+namespace Acme.BookStore.Authors
+{
+    public class UpdateAuthorDto
+    {
+        [Required]
+        [StringLength(AuthorConsts.MaxNameLength)]
+        public string Name { get; set; }
+
+        [Required]
+        public DateTime BirthDate { get; set; }
+        
+        public string ShortBio { get; set; }
+    }
+}
+```
+
+> 我们能够共享(重用)相同的DTO
 
