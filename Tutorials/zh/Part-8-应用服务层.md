@@ -170,5 +170,178 @@ namespace Acme.BookStore.Authors
 }
 ```
 
-> 我们能够共享(重用)相同的DTO
+> 我们可以在创建和更新操作之间共享(重用)相同的DTO。尽管可以做到，但是我们更愿意为这些操作创建不同的Dto，因为我们看它们通常会有有所不同。因此，与紧密耦合的设计相比，这里的代码复制是合理的。
+
+
+
+## AuthorAppService
+
+现在是实现IAuthorAppService接口的时候了。在***.BookStore.Application**项目的Authors文件夹下创建一个名为**AuthorAppService**新类：
+
+```c#
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Acme.BookStore.Permissions;
+using Microsoft.AspNetCore.Authorization;
+using Volo.Abp.Application.Dtos;
+
+namespace Acme.BookStore.Authors
+{
+    [Authorize(BookStorePermissions.Authors.Default)]
+    public class AuthorAppService : BookStoreAppService, IAuthorAppService
+    {
+        private readonly IAuthorRepository _authorRepository;
+        private readonly AuthorManager _authorManager;
+
+        public AuthorAppService(
+            IAuthorRepository authorRepository,
+            AuthorManager authorManager)
+        {
+            _authorRepository = authorRepository;
+            _authorManager = authorManager;
+        }
+
+        //...SERVICE METHODS WILL COME HERE...
+    }
+}
+```
+
+- **[Authorize(BookStorePermission.Authors.Default)]**是检查权限(策略)以授权当前用户的声明方式。有关更多的信息，参考授权文档。BookStorePermission类将在下面更新，现在不用担心编译错误。
+- 派生自**BookStoreAppService**,该模板是启动模板附带的一个简单基类。它是从标准**ApplcationService**类派生的。
+- 现实上面定义的**IAuthorAppService**
+- 注入**IAuthorRepository**和**AuthorManager**便于服务方法中使用
+
+
+
+## GetAsync
+
+```c#
+public async Task<AuthorDto> GetAsync(Guid id)
+{
+    var author = await _authorRepository.GetAsync(id);
+    return ObjectMapper.Map<Author, AuthorDto>(author);
+}
+```
+
+这个方法仅通过其**Id**获取Author实体，并使用对象到对象的映射器将其转化为AuthorDto。这个需要提前配置AutoMapper，这将在后面说明。
+
+
+
+## GetListAsync
+
+```c#
+public async Task<PagedResultDto<AuthorDto>> GetListAsync(GetAuthorListDto input)
+{
+    if (input.Sorting.IsNullOrWhiteSpace())
+    {
+        input.Sorting = nameof(Author.Name);
+    }
+
+    var authors = await _authorRepository.GetListAsync(
+        input.SkipCount,
+        input.MaxResultCount,
+        input.Sorting,
+        input.Filter
+    );
+
+    var totalCount = await AsyncExecuter.CountAsync(
+        _authorRepository.WhereIf(
+            !input.Filter.IsNullOrWhiteSpace(),
+            author => author.Name.Contains(input.Filter)
+        )
+    );
+
+    return new PagedResultDto<AuthorDto>(
+        totalCount,
+        ObjectMapper.Map<List<Author>, List<AuthorDto>>(authors)
+    );
+}
+```
+
+- 默认排序条件是"按作者名称",如果客户端未发送，则在方法的开头进行排序。
+- 使用IAuthorRepository.GetListAsync从数据库中获取作者的分页，排序和筛选列表。我们已经在本教程的前一部分实现了它。同样，实际上并不需要创建这样的方法，因为我们可以直接查询存储库，但想演示如何创建自定义的存储方法。
+- 直接从AuthorRepository查询，同时获取作者的人数。我们更喜欢使用AsyncExecuter服务，该服务允许我们执行异步查询而不需依赖EF Core。但是，您可以依赖EF Core包并直接使用_authorRepository.WhereIf(...).ToLIstAsync()方法。详情参阅存储库文档以阅读替代方法和讨论。
+- 最后，我们通过Authors列表映射到AuthorDtos列表来返回分页结果。
+
+
+
+## CreateAsync
+
+```c#
+[Authorize(BookStorePermissions.Authors.Create)]
+public async Task<AuthorDto> CreateAsync(CreateAuthorDto input)
+{
+    var author = await _authorManager.CreateAsync(
+        input.Name,
+        input.BirthDate,
+        input.ShortBio
+    );
+
+    await _authorRepository.InsertAsync(author);
+
+    return ObjectMapper.Map<Author, AuthorDto>(author);
+}
+```
+
+- **CreateAsync**需要BookStorePermissions.Authors.Create权限(除了为AuthorAppService类声明的BookStorePermissions.Authors.Default除外)。
+-  使用**AuthorManager**（域服务）构建新作者。
+- 使用**IAuthorRepository.InsertAsync**插入新作者到数据库中。
+- 使用**ObjectManager**返回代表新创建作者的**AuthorDto**。
+
+> DDD提示：一些开发人员可能会发现将新实体插入_authorManager.CreateAsync很有用。我们认为将其留个应用程序是一个和好的设计，因为它更好地知道何时将其插入数据库(也许在插入之前它需要对实体进行其他的工作，而如果我们在数据库中执行插入操作，则需要在域服务中进行其他更新。当然，这个取决于您。)
+
+
+
+## UpdateAsync
+
+```c#
+[Authorize(BookStorePermissions.Authors.Edit)]
+public async Task UpdateAsync(Guid id, UpdateAuthorDto input)
+{
+    var author = await _authorRepository.GetAsync(id);
+
+    if (author.Name != input.Name)
+    {
+        await _authorManager.ChangeNameAsync(author, input.Name);
+    }
+
+    author.BirthDate = input.BirthDate;
+    author.ShortBio = input.ShortBio;
+
+    await _authorRepository.UpdateAsync(author);
+}
+```
+
+- **UpdateAsync**需要BookStorePermissions.Authors.Edit权限。
+-  使用**IAuthorRepository.GetAsync**从数据库中获取作者实体。如果不存在给定的ID的作者，则**GetAsync**引发**EntityNotFoundException**，这将在Web应用程序中导致404 HTTP状态码。始终使实体处于更新操作是一个好习惯。
+- 如果客户端请求更改作者名称，则使用**AuthorManager.ChangeNameAsync**(域服务方法)更新作者名称。
+- 由于没有更改这些熟悉那个的任何业务规则，因此直接更新了BirthDate和ShortBio，他们接受任何值。
+- 最后，调用IAuthorRepositroy.UpdateAsync方法以更新数据库上的实体。
+
+> EF Core提示：Entity Framework Core 具有变更跟踪系统，并在工作单元结束时自动将任何变更保存到实体（您可以简单地认为ABP Framework在方法结束时才会自动 调用**SaveChanges**）。因此，即使您未在方法末尾调用_authorRepository.UpdateAsync(...)，它也将按预期工作。如果您不考虑以后再更改EF Core，则只需要删除此行即可
+
+
+
+## DeleteAsync
+
+```c#
+[Authorize(BookStorePermissions.Authors.Delete)]
+public async Task DeleteAsync(Guid id)
+{
+    await _authorRepository.DeleteAsync(id);
+}
+```
+
+- **DeleteAsync**要求添加**BookStorePermissions.Authors.Delete**权限。
+- 它仅使用存储库的**DeleteAsync**方法。
+
+
+
+## 权限定义
+
+您无法编译代码，因为它需要在BookStorePermissions类中声明一些常量。
+
+
 
