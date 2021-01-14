@@ -1,4 +1,4 @@
-#  Web开发教程8 作者：应用层
+#  Web开发教程9 作者：用户界面
 
 ## 关于此教程
 
@@ -18,8 +18,8 @@
 - 第五章：授权
 - 第六章：领域层
 - 第七章：数据库集成
-- **[第八章：应用层（本教程）]()**
-- 第九章：用户接口
+- 第八章：应用层
+- [**第九章：用户界面（本教程）**]()
 - 第十章：预定作者关系
 
 
@@ -36,11 +36,11 @@
 
 ## 导论
 
-这部分教程说明了怎么为上一步介绍的**Author**实体创建应用层。
+这部分教程说明了怎么为上一步介绍的**Author**实体创建CURD页面。
 
 
 
-##  IAuthorAppService
+##  作者列表页面
 
 我们将首先创建应用服务接口和相关的DTOs。在项目***.BookStore.Application.Contracts**创建一个名为**IAuthorAppService**新接口，代码如下：
 
@@ -286,7 +286,7 @@ public async Task<AuthorDto> CreateAsync(CreateAuthorDto input)
 ```
 
 - **CreateAsync**需要BookStorePermissions.Authors.Create权限(除了为AuthorAppService类声明的BookStorePermissions.Authors.Default除外)。
--  使用**AuthorManager**（域服务）构建新作者。
+- 使用**AuthorManager**（域服务）构建新作者。
 - 使用**IAuthorRepository.InsertAsync**插入新作者到数据库中。
 - 使用**ObjectManager**返回代表新创建作者的**AuthorDto**。
 
@@ -315,7 +315,7 @@ public async Task UpdateAsync(Guid id, UpdateAuthorDto input)
 ```
 
 - **UpdateAsync**需要BookStorePermissions.Authors.Edit权限。
--  使用**IAuthorRepository.GetAsync**从数据库中获取作者实体。如果不存在给定的ID的作者，则**GetAsync**引发**EntityNotFoundException**，这将在Web应用程序中导致404 HTTP状态码。始终使实体处于更新操作是一个好习惯。
+- 使用**IAuthorRepository.GetAsync**从数据库中获取作者实体。如果不存在给定的ID的作者，则**GetAsync**引发**EntityNotFoundException**，这将在Web应用程序中导致404 HTTP状态码。始终使实体处于更新操作是一个好习惯。
 - 如果客户端请求更改作者名称，则使用**AuthorManager.ChangeNameAsync**(域服务方法)更新作者名称。
 - 由于没有更改这些熟悉那个的任何业务规则，因此直接更新了BirthDate和ShortBio，他们接受任何值。
 - 最后，调用IAuthorRepositroy.UpdateAsync方法以更新数据库上的实体。
