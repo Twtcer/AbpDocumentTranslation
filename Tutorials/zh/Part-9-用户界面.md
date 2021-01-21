@@ -24,7 +24,7 @@
 
 
 
-## 下载源码
+### 下载源码
 
 教程根据您的UI和数据库首选项有多个版本。我们准备了一些可供下载的源码组合：
 
@@ -42,139 +42,214 @@
 
 ##  作者列表页面
 
-我们将首先创建应用服务接口和相关的DTOs。在项目***.BookStore.Application.Contracts**创建一个名为**IAuthorAppService**新接口，代码如下：
+在项目***.BookStore.Web**文件夹**Pages/Authors**下创建新的razor页面**Index.cshtml**,内容如下：
 
 ```c#
-using System;
-using System.Threading.Tasks;
-using Volo.Abp.Application.Dtos;
-using Volo.Abp.Application.Services;
+@page
+@using Acme.BookStore.Localization
+@using Acme.BookStore.Permissions
+@using Acme.BookStore.Web.Pages.Authors
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Localization
+@inject IStringLocalizer<BookStoreResource> L
+@inject IAuthorizationService AuthorizationService
+@model IndexModel
 
-namespace Acme.BookStore.Authors
+@section scripts
 {
-    public interface IAuthorAppService : IApplicationService
+    <abp-script src="/Pages/Authors/Index.js"/>
+}
+
+<abp-card>
+    <abp-card-header>
+        <abp-row>
+            <abp-column size-md="_6">
+                <abp-card-title>@L["Authors"]</abp-card-title>
+            </abp-column>
+            <abp-column size-md="_6" class="text-right">
+                @if (await AuthorizationService
+                    .IsGrantedAsync(BookStorePermissions.Authors.Create))
+                {
+                    <abp-button id="NewAuthorButton"
+                                text="@L["NewAuthor"].Value"
+                                icon="plus"
+                                button-type="Primary"/>
+                }
+            </abp-column>
+        </abp-row>
+    </abp-card-header>
+    <abp-card-body>
+        <abp-table striped-rows="true" id="AuthorsTable"></abp-table>
+    </abp-card-body>
+</abp-card>
+```
+
+这个简单的页面类似于我们之前创建的图书页面。它将导入一个JavaScript文件，下面将对其进行介绍。
+
+
+
+### IndexModel.cshtml.cs
+
+```c#
+using Microsoft.AspNetCore.Mvc.RazorPages;
+
+namespace Acme.BookStore.Web.Pages.Authors
+{
+    public class IndexModel : PageModel
     {
-        Task<AuthorDto> GetAsync(Guid id);
+        public void OnGet()
+        {
 
-        Task<PagedResultDto<AuthorDto>> GetListAsync(GetAuthorListDto input);
-
-        Task<AuthorDto> CreateAsync(CreateAuthorDto input);
-
-        Task UpdateAsync(Guid id, UpdateAuthorDto input);
-
-        Task DeleteAsync(Guid id);
+        }
     }
 }
 ```
 
-- **IApplicationService** 是由所有应用程序服务集成的常规接口，因此ABP框架可以识别该服务。
-- 定义的标准方法以在**Author**实体上执行CRUD操作。
-- **PageResultDto**  是ABP框架中预定义DTO类。它具有**Items** 集合和**TotalCount**属性即返回分页结果。
-- 首先从**CreateAsync**方法返回AuthorDto（对于新建的作者），此应用程序不使用它-只是为了显示不同的方法。
-
-该界面使用下面定义的DTO（为您的项目创建他们）
 
 
-
-## AuthorDto
+### Index.js
 
 ```c#
-using System;
-using Volo.Abp.Application.Dtos;
+$(function () {
+    var l = abp.localization.getResource('BookStore');
+    var createModal = new abp.ModalManager(abp.appPath + 'Authors/CreateModal');
+    var editModal = new abp.ModalManager(abp.appPath + 'Authors/EditModal');
 
-namespace Acme.BookStore.Authors
+    var dataTable = $('#AuthorsTable').DataTable(
+        abp.libs.datatables.normalizeConfiguration({
+            serverSide: true,
+            paging: true,
+            order: [[1, "asc"]],
+            searching: false,
+            scrollX: true,
+            ajax: abp.libs.datatables.createAjax(acme.bookStore.authors.author.getList),
+            columnDefs: [
+                {
+                    title: l('Actions'),
+                    rowAction: {
+                        items:
+                            [
+                                {
+                                    text: l('Edit'),
+                                    visible: 
+                                        abp.auth.isGranted('BookStore.Authors.Edit'),
+                                    action: function (data) {
+                                        editModal.open({ id: data.record.id });
+                                    }
+                                },
+                                {
+                                    text: l('Delete'),
+                                    visible: 
+                                        abp.auth.isGranted('BookStore.Authors.Delete'),
+                                    confirmMessage: function (data) {
+                                        return l(
+                                            'AuthorDeletionConfirmationMessage',
+                                            data.record.name
+                                        );
+                                    },
+                                    action: function (data) {
+                                        acme.bookStore.authors.author
+                                            .delete(data.record.id)
+                                            .then(function() {
+                                                abp.notify.info(
+                                                    l('SuccessfullyDeleted')
+                                                );
+                                                dataTable.ajax.reload();
+                                            });
+                                    }
+                                }
+                            ]
+                    }
+                },
+                {
+                    title: l('Name'),
+                    data: "name"
+                },
+                {
+                    title: l('BirthDate'),
+                    data: "birthDate",
+                    render: function (data) {
+                        return luxon
+                            .DateTime
+                            .fromISO(data, {
+                                locale: abp.localization.currentCulture.name
+                            }).toLocaleString();
+                    }
+                }
+            ]
+        })
+    );
+
+    createModal.onResult(function () {
+        dataTable.ajax.reload();
+    });
+
+    editModal.onResult(function () {
+        dataTable.ajax.reload();
+    });
+
+    $('#NewAuthorButton').click(function (e) {
+        e.preventDefault();
+        createModal.open();
+    });
+});
+```
+
+简而言之，这个JavaScript页面：
+
+- 为**操作，名称**和**出生生日**列创建一个数据表
+  - **操作**列被用于添加编辑和删除操作
+  - 生日提供了一个渲染函数，用于使用luxon库格式化DateTime值
+- 使用**abp.ModalManager**打开**创建**和**编辑**模态表单
+
+该代码与之前创建的图书页面非常相似。因此我们将不再对其进行详细的说明。
+
+
+
+### 本地化
+
+该页面使用一些我们需要先定义本地化关键字。在项目***.BootStore.Domain.Shared**文件夹**Localization/BookStore**打开**en.json**文件，并添加已下条目：
+
+```c#
+"Menu:Authors": "Authors",
+"Authors": "Authors",
+"AuthorDeletionConfirmationMessage": "Are you sure to delete the author '{0}'?",
+"BirthDate": "Birth date",
+"NewAuthor": "New author"
+```
+
+注意。我们添加更多键。它将在下一部分中使用。
+
+
+
+### 添加作者主菜单
+
+在项目***.BookStore.Web**文件夹**Menu**下打开文件**BookStoreMenuContributor.cs**，然后添加以下代码到方法**ConfigureMainMenuAsync**结尾部分：
+
+```c#
+if (await context.IsGrantedAsync(BookStorePermissions.Authors.Default))
 {
-    public class AuthorDto : EntityDto<Guid>
-    {
-        public string Name { get; set; }
-
-        public DateTime BirthDate { get; set; }
-
-        public string ShortBio { get; set; }
-    }
+    bookStoreMenu.AddItem(new ApplicationMenuItem(
+        "BooksStore.Authors",
+        l["Menu:Authors"],
+        url: "/Authors"
+    ));
 }
 ```
 
-- **EntityDto<T>** 仅具有给定泛型参数的Id属性。您可以自己创建一个Id属性，而不是继承EntityDto。
+
+
+### 运行应用程序
+
+运行并登录应用程序。您尚未获得权限，因此无法看到菜单项。撞到**身份/角色**页面，单价**操作**按钮，然后为管理员角色选择**权限**操作：
+
+![bookstore-author-permissions](https://raw.githubusercontent.com/Twtcer/imgbed/main/picgo/bookstore-author-permissions.png)
+
+如你所见，admin角色还没有没有**Aurthor Management** 权限。单击复选框，然后保存模式以授权必要的权限。刷新页面后，您将主菜单中的书店下看到
 
 
 
-## GetAuthorListDto
-
-```c#
-using Volo.Abp.Application.Dtos;
-
-namespace Acme.BookStore.Authors
-{
-    public class GetAuthorListDto : PagedAndSortedResultRequestDto
-    {
-        public string Filter { get; set; }
-    }
-}
-```
-
-- **Filter**被用于搜索作者。它可为**null**对象（或者string空）以获得所有作者。
-- **PagedAndSortedResultRequestDto** 具有标准的分页和排序属性：**int MaxResultCount, int SkipCount, String Sorting** 。
-
-
-
-> ABP框架具有基本的DTO类，以简化和标准化您的DTO。有关信息，参考DTO文档。
-
-
-
-## CreateAuthorDto
-
-```c#
-using System;
-using System.ComponentModel.DataAnnotations;
-
-namespace Acme.BookStore.Authors
-{
-    public class CreateAuthorDto
-    {
-        [Required]
-        [StringLength(AuthorConsts.MaxNameLength)]
-        public string Name { get; set; }
-
-        [Required]
-        public DateTime BirthDate { get; set; }
-        
-        public string ShortBio { get; set; }
-    }
-}
-```
-
-数据注解属性能够用于校验DTO对象。详见[校验文档](https://docs.abp.io/en/abp/latest/Validation)。
-
-
-
-## UpdateAuthorDto
-
-```c#
-using System;
-using System.ComponentModel.DataAnnotations;
-
-namespace Acme.BookStore.Authors
-{
-    public class UpdateAuthorDto
-    {
-        [Required]
-        [StringLength(AuthorConsts.MaxNameLength)]
-        public string Name { get; set; }
-
-        [Required]
-        public DateTime BirthDate { get; set; }
-        
-        public string ShortBio { get; set; }
-    }
-}
-```
-
-> 我们可以在创建和更新操作之间共享(重用)相同的DTO。尽管可以做到，但是我们更愿意为这些操作创建不同的Dto，因为我们看它们通常会有有所不同。因此，与紧密耦合的设计相比，这里的代码复制是合理的。
-
-
-
-## AuthorAppService
+### AuthorAppService
 
 现在是实现IAuthorAppService接口的时候了。在***.BookStore.Application**项目的Authors文件夹下创建一个名为**AuthorAppService**新类：
 
