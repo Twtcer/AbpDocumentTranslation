@@ -245,413 +245,276 @@ if (await context.IsGrantedAsync(BookStorePermissions.Authors.Default))
 
 ![bookstore-author-permissions](https://raw.githubusercontent.com/Twtcer/imgbed/main/picgo/bookstore-author-permissions.png)
 
-如你所见，admin角色还没有没有**Aurthor Management** 权限。单击复选框，然后保存模式以授权必要的权限。刷新页面后，您将主菜单中的书店下看到
+
+
+如你所见，admin角色还没有没有**Aurthor Management** 权限。单击复选框，然后保存模式以授权必要的权限。刷新页面后，您将主菜单中的书店下看到“作者”菜单项：
+
+![bookstore-authors-page](https://raw.githubusercontent.com/Twtcer/imgbed/main/picgo/bookstore-authors-page.png)
+
+页面可以正常工作，除了“新作者”和操作“编辑“，我们尚未实现他们。
+
+> 提示：如果定义新权限后运行**.DbMigrator** 控制台程序，它将自动向管理员角色授予这些新权限，并且您无需自己手动授予权限。
 
 
 
-### AuthorAppService
+## 创建页面
 
-现在是实现IAuthorAppService接口的时候了。在***.BookStore.Application**项目的Authors文件夹下创建一个名为**AuthorAppService**新类：
+在项目 ***.BookStore.Web** 文件夹下 **Pages/Authors** 创建一个新的页面CreateModal.cshtml ，然后更改内容如下：
+
+###  CreateModal.cshtml
 
 ```c#
+@page
+@using Acme.BookStore.Localization
+@using Acme.BookStore.Web.Pages.Authors
+@using Microsoft.Extensions.Localization
+@using Volo.Abp.AspNetCore.Mvc.UI.Bootstrap.TagHelpers.Modal
+@model CreateModalModel
+@inject IStringLocalizer<BookStoreResource> L
+@{
+    Layout = null;
+}
+<form asp-page="/Authors/CreateModal">
+    <abp-modal>
+        <abp-modal-header title="@L["NewAuthor"].Value"></abp-modal-header>
+        <abp-modal-body>
+            <abp-input asp-for="Author.Name" />
+            <abp-input asp-for="Author.BirthDate" />
+            <abp-input asp-for="Author.ShortBio" />
+        </abp-modal-body>
+        <abp-modal-footer buttons="@(AbpModalButtons.Cancel|AbpModalButtons.Save)"></abp-modal-footer>
+    </abp-modal>
+</form>
+```
+
+之前我们使用abp框架动态表单构建图书页面，我们可以在此处使用相同的方法，但是我们想展示如何手动进行。实际上，不是手动操作，因为在这种情况下，我们使用abp-input标签程序来简化表单元素的创建。
+
+
+
+### CreateModel.cshtml.cs
+
+```html
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Acme.BookStore.Permissions;
-using Microsoft.AspNetCore.Authorization;
-using Volo.Abp.Application.Dtos;
-
-namespace Acme.BookStore.Authors
-{
-    [Authorize(BookStorePermissions.Authors.Default)]
-    public class AuthorAppService : BookStoreAppService, IAuthorAppService
-    {
-        private readonly IAuthorRepository _authorRepository;
-        private readonly AuthorManager _authorManager;
-
-        public AuthorAppService(
-            IAuthorRepository authorRepository,
-            AuthorManager authorManager)
-        {
-            _authorRepository = authorRepository;
-            _authorManager = authorManager;
-        }
-
-        //...SERVICE METHODS WILL COME HERE...
-    }
-}
-```
-
-- **[Authorize(BookStorePermission.Authors.Default)]**是检查权限(策略)以授权当前用户的声明方式。有关更多的信息，参考授权文档。BookStorePermission类将在下面更新，现在不用担心编译错误。
-- 派生自**BookStoreAppService**,该模板是启动模板附带的一个简单基类。它是从标准**ApplcationService**类派生的。
-- 现实上面定义的**IAuthorAppService**
-- 注入**IAuthorRepository**和**AuthorManager**便于服务方法中使用
-
-
-
-## GetAsync
-
-```c#
-public async Task<AuthorDto> GetAsync(Guid id)
-{
-    var author = await _authorRepository.GetAsync(id);
-    return ObjectMapper.Map<Author, AuthorDto>(author);
-}
-```
-
-这个方法仅通过其**Id**获取Author实体，并使用对象到对象的映射器将其转化为AuthorDto。这个需要提前配置AutoMapper，这将在后面说明。
-
-
-
-## GetListAsync
-
-```c#
-public async Task<PagedResultDto<AuthorDto>> GetListAsync(GetAuthorListDto input)
-{
-    if (input.Sorting.IsNullOrWhiteSpace())
-    {
-        input.Sorting = nameof(Author.Name);
-    }
-
-    var authors = await _authorRepository.GetListAsync(
-        input.SkipCount,
-        input.MaxResultCount,
-        input.Sorting,
-        input.Filter
-    );
-
-    var totalCount = await AsyncExecuter.CountAsync(
-        _authorRepository.WhereIf(
-            !input.Filter.IsNullOrWhiteSpace(),
-            author => author.Name.Contains(input.Filter)
-        )
-    );
-
-    return new PagedResultDto<AuthorDto>(
-        totalCount,
-        ObjectMapper.Map<List<Author>, List<AuthorDto>>(authors)
-    );
-}
-```
-
-- 默认排序条件是"按作者名称",如果客户端未发送，则在方法的开头进行排序。
-- 使用IAuthorRepository.GetListAsync从数据库中获取作者的分页，排序和筛选列表。我们已经在本教程的前一部分实现了它。同样，实际上并不需要创建这样的方法，因为我们可以直接查询存储库，但想演示如何创建自定义的存储方法。
-- 直接从AuthorRepository查询，同时获取作者的人数。我们更喜欢使用AsyncExecuter服务，该服务允许我们执行异步查询而不需依赖EF Core。但是，您可以依赖EF Core包并直接使用_authorRepository.WhereIf(...).ToLIstAsync()方法。详情参阅存储库文档以阅读替代方法和讨论。
-- 最后，我们通过Authors列表映射到AuthorDtos列表来返回分页结果。
-
-
-
-## CreateAsync
-
-```c#
-[Authorize(BookStorePermissions.Authors.Create)]
-public async Task<AuthorDto> CreateAsync(CreateAuthorDto input)
-{
-    var author = await _authorManager.CreateAsync(
-        input.Name,
-        input.BirthDate,
-        input.ShortBio
-    );
-
-    await _authorRepository.InsertAsync(author);
-
-    return ObjectMapper.Map<Author, AuthorDto>(author);
-}
-```
-
-- **CreateAsync**需要BookStorePermissions.Authors.Create权限(除了为AuthorAppService类声明的BookStorePermissions.Authors.Default除外)。
-- 使用**AuthorManager**（域服务）构建新作者。
-- 使用**IAuthorRepository.InsertAsync**插入新作者到数据库中。
-- 使用**ObjectManager**返回代表新创建作者的**AuthorDto**。
-
-> DDD提示：一些开发人员可能会发现将新实体插入_authorManager.CreateAsync很有用。我们认为将其留个应用程序是一个和好的设计，因为它更好地知道何时将其插入数据库(也许在插入之前它需要对实体进行其他的工作，而如果我们在数据库中执行插入操作，则需要在域服务中进行其他更新。当然，这个取决于您。)
-
-
-
-## UpdateAsync
-
-```c#
-[Authorize(BookStorePermissions.Authors.Edit)]
-public async Task UpdateAsync(Guid id, UpdateAuthorDto input)
-{
-    var author = await _authorRepository.GetAsync(id);
-
-    if (author.Name != input.Name)
-    {
-        await _authorManager.ChangeNameAsync(author, input.Name);
-    }
-
-    author.BirthDate = input.BirthDate;
-    author.ShortBio = input.ShortBio;
-
-    await _authorRepository.UpdateAsync(author);
-}
-```
-
-- **UpdateAsync**需要BookStorePermissions.Authors.Edit权限。
-- 使用**IAuthorRepository.GetAsync**从数据库中获取作者实体。如果不存在给定的ID的作者，则**GetAsync**引发**EntityNotFoundException**，这将在Web应用程序中导致404 HTTP状态码。始终使实体处于更新操作是一个好习惯。
-- 如果客户端请求更改作者名称，则使用**AuthorManager.ChangeNameAsync**(域服务方法)更新作者名称。
-- 由于没有更改这些熟悉那个的任何业务规则，因此直接更新了BirthDate和ShortBio，他们接受任何值。
-- 最后，调用IAuthorRepositroy.UpdateAsync方法以更新数据库上的实体。
-
-> EF Core提示：Entity Framework Core 具有变更跟踪系统，并在工作单元结束时自动将任何变更保存到实体（您可以简单地认为ABP Framework在方法结束时才会自动 调用**SaveChanges**）。因此，即使您未在方法末尾调用_authorRepository.UpdateAsync(...)，它也将按预期工作。如果您不考虑以后再更改EF Core，则只需要删除此行即可
-
-
-
-## DeleteAsync
-
-```c#
-[Authorize(BookStorePermissions.Authors.Delete)]
-public async Task DeleteAsync(Guid id)
-{
-    await _authorRepository.DeleteAsync(id);
-}
-```
-
-- **DeleteAsync**要求添加**BookStorePermissions.Authors.Delete**权限。
-- 它仅使用存储库的**DeleteAsync**方法。
-
-
-
-## 权限定义
-
-您无法编译代码，因为它需要在BookStorePermissions类中声明一些常量。
-
-在项目***.BookStore.Application.Contracts**文件夹**Permissions**下修改类BookStorePermissions如下：
-
-```c#
-namespace Acme.BookStore.Permissions
-{
-    public static class BookStorePermissions
-    {
-        public const string GroupName = "BookStore";
-
-        public static class Books
-        {
-            public const string Default = GroupName + ".Books";
-            public const string Create = Default + ".Create";
-            public const string Edit = Default + ".Edit";
-            public const string Delete = Default + ".Delete";
-        }
-        
-        // *** ADDED a NEW NESTED CLASS ***
-        public static class Authors
-        {
-            public const string Default = GroupName + ".Authors";
-            public const string Create = Default + ".Create";
-            public const string Edit = Default + ".Edit";
-            public const string Delete = Default + ".Delete";
-        }
-    }
-}
-```
-
-然后在同项目中打开**BookStorePermissionDefinitionProvider** ，在结尾处添加方法**Define**:
-
-```c#
-var authorsPermission = bookStoreGroup.AddPermission(
-    BookStorePermissions.Authors.Default, L("Permission:Authors"));
-
-authorsPermission.AddChild(
-    BookStorePermissions.Authors.Create, L("Permission:Authors.Create"));
-
-authorsPermission.AddChild(
-    BookStorePermissions.Authors.Edit, L("Permission:Authors.Edit"));
-
-authorsPermission.AddChild(
-    BookStorePermissions.Authors.Delete, L("Permission:Authors.Delete"));
-```
-
-最后，在项目***.BookStore.Domian.Share**找到文件 **Localization/BookStore/en.json**,添加如下权限条目：
-
-```
-"Permission:Authors": "Author Management",
-"Permission:Authors.Create": "Creating new authors",
-"Permission:Authors.Edit": "Editing the authors",
-"Permission:Authors.Delete": "Deleting the authors"
-```
-
-
-
-## 对象到对象映射
-
-**AuthorAppService ** 使用**ObjectManager**将**Author**对象转化为**AuthoDto**对象。所以我们需要在**AutoMapper**中定义映射关系。
-
-```
-CreateMap<Author, AuthorDto>();
-```
-
-
-
-## Data Seeder (数据初始种子)
-
-就像之前的书籍一样，最好在数据库中有一些初始作者实体。第一次运行该应用程序时候，这会很好，但对于自动化测试而言，它非常有用。
-
-打开项目***.BootStore.Domian**中**BookStoreDataSeederContributor**,作如下更改：
-
-```c#
-using System;
+using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 using Acme.BookStore.Authors;
-using Acme.BookStore.Books;
-using Volo.Abp.Data;
-using Volo.Abp.DependencyInjection;
-using Volo.Abp.Domain.Repositories;
+using Microsoft.AspNetCore.Mvc;
+using Volo.Abp.AspNetCore.Mvc.UI.Bootstrap.TagHelpers.Form;
 
-namespace Acme.BookStore
+namespace Acme.BookStore.Web.Pages.Authors
 {
-    public class BookStoreDataSeederContributor
-        : IDataSeedContributor, ITransientDependency
+    public class CreateModalModel : BookStorePageModel
     {
-        private readonly IRepository<Book, Guid> _bookRepository;
-        private readonly IAuthorRepository _authorRepository;
-        private readonly AuthorManager _authorManager;
+        [BindProperty]
+        public CreateAuthorViewModel Author { get; set; }
 
-        public BookStoreDataSeederContributor(
-            IRepository<Book, Guid> bookRepository,
-            IAuthorRepository authorRepository,
-            AuthorManager authorManager)
+        private readonly IAuthorAppService _authorAppService;
+
+        public CreateModalModel(IAuthorAppService authorAppService)
         {
-            _bookRepository = bookRepository;
-            _authorRepository = authorRepository;
-            _authorManager = authorManager;
+            _authorAppService = authorAppService;
         }
 
-        public async Task SeedAsync(DataSeedContext context)
+        public void OnGet()
         {
-            if (await _bookRepository.GetCountAsync() <= 0)
-            {
-                await _bookRepository.InsertAsync(
-                    new Book
-                    {
-                        Name = "1984",
-                        Type = BookType.Dystopia,
-                        PublishDate = new DateTime(1949, 6, 8),
-                        Price = 19.84f
-                    },
-                    autoSave: true
-                );
+            Author = new CreateAuthorViewModel();
+        }
 
-                await _bookRepository.InsertAsync(
-                    new Book
-                    {
-                        Name = "The Hitchhiker's Guide to the Galaxy",
-                        Type = BookType.ScienceFiction,
-                        PublishDate = new DateTime(1995, 9, 27),
-                        Price = 42.0f
-                    },
-                    autoSave: true
-                );
-            }
+        public async Task<IActionResult> OnPostAsync()
+        {
+            var dto = ObjectMapper.Map<CreateAuthorViewModel, CreateAuthorDto>(Author);
+            await _authorAppService.CreateAsync(dto);
+            return NoContent();
+        }
 
-            // ADDED SEED DATA FOR AUTHORS
+        public class CreateAuthorViewModel
+        {
+            [Required]
+            [StringLength(AuthorConsts.MaxNameLength)]
+            public string Name { get; set; }
 
-            if (await _authorRepository.GetCountAsync() <= 0)
-            {
-                await _authorRepository.InsertAsync(
-                    await _authorManager.CreateAsync(
-                        "George Orwell",
-                        new DateTime(1903, 06, 25),
-                        "Orwell produced literary criticism and poetry, fiction and polemical journalism; and is best known for the allegorical novella Animal Farm (1945) and the dystopian novel Nineteen Eighty-Four (1949)."
-                    )
-                );
+            [Required]
+            [DataType(DataType.Date)]
+            public DateTime BirthDate { get; set; }
 
-                await _authorRepository.InsertAsync(
-                    await _authorManager.CreateAsync(
-                        "Douglas Adams",
-                        new DateTime(1952, 03, 11),
-                        "Douglas Adams was an English author, screenwriter, essayist, humorist, satirist and dramatist. Adams was an advocate for environmentalism and conservation, a lover of fast cars, technological innovation and the Apple Macintosh, and a self-proclaimed 'radical atheist'."
-                    )
-                );
-            }
+            [TextArea]
+            public string ShortBio { get; set; }
         }
     }
 }
 ```
 
-你现在可以运行**.DbMigrator**控制台程序以迁移数据库架构并未初始数据添加种子。
+此页面模型类仅注入并使用IAuthorAppService创建新作者。书籍创建模型类之间的主要区别在于该类为模型声明一个新类CreateAuthorViewModel,而不是重新使用CreateAuthorDto。
+
+做出此决定的主要原因是向您展示如何在页面内使用其他的模型类。
+
+但是还有一个好处：我们向成员类中添加两个属性，这些属性在CreateAuthorDto不存在：
+
+- 添加 **[DataType(DataType.Date)]** 标签到属性**BirthDate**，该属性用于在UI上显示此属性的日期选择器。
+- 添加**[TeatArea]**标签到属性**ShortBio**，该属性将展示一个多行的文本编辑器替代默认的文本框。 
 
 
 
-## 测试Author服务
+这样，你可以基于UI需求来专门化视图模型类，而无需接触DTO。作为此决定的结果，我们使用ObjectMapper将**CreateAuthorViewModel**映射到**CreateAuthorDto**。为此，你选哟向BookStoreWebAutoMapperProfie构造函数添加新的映射代码：
 
-最后，我们将为**IAuthorAppService**写一些测试。在项目***.BookStore.Applcation.Tests**文件夹**Authors**下添加新类并命名为**AuthorAppService_Tests**：
+```C#
+using Acme.BookStore.Authors; // ADDED NAMESPACE IMPORT
+using Acme.BookStore.Books;
+using AutoMapper;
+
+namespace Acme.BookStore.Web
+{
+    public class BookStoreWebAutoMapperProfile : Profile
+    {
+        public BookStoreWebAutoMapperProfile()
+        {
+            CreateMap<BookDto, CreateUpdateBookDto>();
+
+            // ADD a NEW MAPPING
+            CreateMap<Pages.Authors.CreateModalModel.CreateAuthorViewModel,
+                      CreateAuthorDto>();
+        }
+    }
+}
+```
+
+
+
+当你再次运行该应用程序时，"新建作者"按钮将按预期工作并打开一个新模型：
+
+![bookstore-new-author-modal](https://raw.githubusercontent.com/Twtcer/imgbed/main/picgo/bookstore-new-author-modal.png)
+
+
+
+## 编辑页面
+
+在* .BookStore.Web项目Pages/Authors文件夹下创建新的页面EditModal.cshtml，然后更改内容，如下所示：
+
+```razor
+@page
+@using Acme.BookStore.Localization
+@using Acme.BookStore.Web.Pages.Authors
+@using Microsoft.Extensions.Localization
+@using Volo.Abp.AspNetCore.Mvc.UI.Bootstrap.TagHelpers.Modal
+@model EditModalModel
+@inject IStringLocalizer<BookStoreResource> L
+@{
+    Layout = null;
+}
+<form asp-page="/Authors/EditModal">
+    <abp-modal>
+        <abp-modal-header title="@L["Update"].Value"></abp-modal-header>
+        <abp-modal-body>
+            <abp-input asp-for="Author.Id" />
+            <abp-input asp-for="Author.Name" />
+            <abp-input asp-for="Author.BirthDate" />
+            <abp-input asp-for="Author.ShortBio" />
+        </abp-modal-body>
+        <abp-modal-footer buttons="@(AbpModalButtons.Cancel|AbpModalButtons.Save)"></abp-modal-footer>
+    </abp-modal>
+</form>
+```
+
+
+
+###  EditModal.cshtml.cs
 
 ```c#
 using System;
+using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
-using Shouldly;
-using Xunit;
+using Acme.BookStore.Authors;
+using Microsoft.AspNetCore.Mvc;
+using Volo.Abp.AspNetCore.Mvc.UI.Bootstrap.TagHelpers.Form;
 
-namespace Acme.BookStore.Authors
-{ 
-    public class AuthorAppService_Tests : BookStoreApplicationTestBase
+namespace Acme.BookStore.Web.Pages.Authors
+{
+    public class EditModalModel : BookStorePageModel
     {
+        [BindProperty]
+        public EditAuthorViewModel Author { get; set; }
+
         private readonly IAuthorAppService _authorAppService;
 
-        public AuthorAppService_Tests()
+        public EditModalModel(IAuthorAppService authorAppService)
         {
-            _authorAppService = GetRequiredService<IAuthorAppService>();
+            _authorAppService = authorAppService;
         }
 
-        [Fact]
-        public async Task Should_Get_All_Authors_Without_Any_Filter()
+        public async Task OnGetAsync(Guid id)
         {
-            var result = await _authorAppService.GetListAsync(new GetAuthorListDto());
-
-            result.TotalCount.ShouldBeGreaterThanOrEqualTo(2);
-            result.Items.ShouldContain(author => author.Name == "George Orwell");
-            result.Items.ShouldContain(author => author.Name == "Douglas Adams");
+            var authorDto = await _authorAppService.GetAsync(id);
+            Author = ObjectMapper.Map<AuthorDto, EditAuthorViewModel>(authorDto);
         }
 
-        [Fact]
-        public async Task Should_Get_Filtered_Authors()
+        public async Task<IActionResult> OnPostAsync()
         {
-            var result = await _authorAppService.GetListAsync(
-                new GetAuthorListDto {Filter = "George"});
-
-            result.TotalCount.ShouldBeGreaterThanOrEqualTo(1);
-            result.Items.ShouldContain(author => author.Name == "George Orwell");
-            result.Items.ShouldNotContain(author => author.Name == "Douglas Adams");
-        }
-
-        [Fact]
-        public async Task Should_Create_A_New_Author()
-        {
-            var authorDto = await _authorAppService.CreateAsync(
-                new CreateAuthorDto
-                {
-                    Name = "Edward Bellamy",
-                    BirthDate = new DateTime(1850, 05, 22),
-                    ShortBio = "Edward Bellamy was an American author..."
-                }
+            await _authorAppService.UpdateAsync(
+                Author.Id,
+                ObjectMapper.Map<EditAuthorViewModel, UpdateAuthorDto>(Author)
             );
-            
-            authorDto.Id.ShouldNotBe(Guid.Empty);
-            authorDto.Name.ShouldBe("Edward Bellamy");
+
+            return NoContent();
         }
 
-        [Fact]
-        public async Task Should_Not_Allow_To_Create_Duplicate_Author()
+        public class EditAuthorViewModel
         {
-            await Assert.ThrowsAsync<AuthorAlreadyExistsException>(async () =>
-            {
-                await _authorAppService.CreateAsync(
-                    new CreateAuthorDto
-                    {
-                        Name = "Douglas Adams",
-                        BirthDate = DateTime.Now,
-                        ShortBio = "..."
-                    }
-                );
-            });
-        }
+            [HiddenInput]
+            public Guid Id { get; set; }
 
-        //TODO: Test other methods...
+            [Required]
+            [StringLength(AuthorConsts.MaxNameLength)]
+            public string Name { get; set; }
+
+            [Required]
+            [DataType(DataType.Date)]
+            public DateTime BirthDate { get; set; }
+
+            [TextArea]
+            public string ShortBio { get; set; }
+        }
     }
 }
 ```
 
-为应用程序服务方法创建一些测试，这些测试应该很容易理解。
+这个类似CreateModal.cshtml.cs，但是有一些区别：
 
+- 使用IAuthorAppService.GetAsync()方法从应用程序层获取编辑作者。
+- EditAurhorViewModal具有一个附加的Id属性，该属性用[HiddenInput]标记，该标签为此属性创建隐藏的输入。
+
+
+
+此类要向BookStoreWebAutoMapperProfile类添加两个对象映射声明：
+
+```c#
+using Acme.BookStore.Authors;
+using Acme.BookStore.Books;
+using AutoMapper;
+
+namespace Acme.BookStore.Web
+{
+    public class BookStoreWebAutoMapperProfile : Profile
+    {
+        public BookStoreWebAutoMapperProfile()
+        {
+            CreateMap<BookDto, CreateUpdateBookDto>();
+
+            CreateMap<Pages.Authors.CreateModalModel.CreateAuthorViewModel,
+                      CreateAuthorDto>();
+
+            // ADD THESE NEW MAPPINGS
+            CreateMap<AuthorDto, Pages.Authors.EditModalModel.EditAuthorViewModel>();
+            CreateMap<Pages.Authors.EditModalModel.EditAuthorViewModel,
+                      UpdateAuthorDto>();
+        }
+    }
+}
+```
+
+通过以上你可以运行程序，然后尝试编辑作者。
+
+
+
+## 下一部分
+
+[详见下一部分教程]()
